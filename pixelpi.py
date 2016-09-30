@@ -8,7 +8,7 @@ try:
     CWIID_ENABLED = True
 except ImportError:
     CWIID_ENABLED = False
-import Image
+from PIL import Image
 
 
 # 3 bytes per pixel
