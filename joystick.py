@@ -1,10 +1,18 @@
 # Released by rdb under the Unlicense (unlicense.org)
 # Based on information from:
 # https://www.kernel.org/doc/Documentation/input/joystick-api.txt
-
+import time
 import os, struct, array
+import signal as sig
+from blinker import signal
 from fcntl import ioctl
+import threading as t
+import subprocess
+
 verbose = True
+running = False
+p=[]
+java=[]
 # Iterate over the joystick devices.
 if verbose:
     print('Available devices:')
@@ -17,7 +25,9 @@ if verbose:
 # We'll store the states here.
 axis_states = {}
 button_states = {}
-
+pressed = signal('pressed')
+released = signal('released')
+changed = signal('changed')
 # These constants were borrowed from linux/input.h
 axis_names = {
     0x00 : 'x',
@@ -136,28 +146,62 @@ for btn in buf[:num_buttons]:
 
 print '%d axes found: %s' % (num_axes, ', '.join(axis_map))
 print '%d buttons found: %s' % (num_buttons, ', '.join(button_map))
+def start_invader(sender, **kw):
+    global running
+    global java
+    global p
+    if kw['button']=='start':
+        if running == False:
+            print 'Invader_start'
+            java=subprocess.Popen('cd /home/pi/Downloads/pixelcontroller-distribution-2.0.0/;\
+                            java -jar PixelController.jar',stdout=subprocess.PIPE, shell=True)
+            print 'invader_running'
+            p=subprocess.Popen('python /home/pi/Documents/pixel_show/pixelpi.py pixelinvaders --udp-ip 127.0.0.1 --udp-port 6803',stdout=subprocess.PIPE, shell=True,preexec_fn=os.setsid)
+            print 'Done calling'
+            running = True
+pressed.connect(start_invader)
 
+def kill(sender, **kw):
+    global running
+    if button_states['select']==1 and kw['button']=='start':
+        if running == True:
+            os.killpg(os.getpgid(p.pid), sig.SIGTERM)
+            a = subprocess.check_output('ps -e | grep java',shell=True)
+            pid = int(a.strip().split(' ',1)[0])
+            os.kill(pid,sig.SIGTERM)
+            running = False
+            
+pressed.connect(kill)
+    
 # Main event loop
 while True:
     evbuf = jsdev.read(8)
     if evbuf:
-        time, value, type, number = struct.unpack('IhBB', evbuf)
+        e_time, value, type, number = struct.unpack('IhBB', evbuf)
 
         if type & 0x80:
-             print "(initial)",
+            if verbose:
+                print "(initial)",
+        else:
+            
+            if type & 0x01:
+                button = button_map[number]
+                if button:
+                    button_states[button] = value
+                    if value:
+                        if verbose:
+                            print "%s pressed" % (button)
+                        pressed.send('button',button=button)
+                    else:
+                        if verbose:
+                            print "%s released" % (button)
+                        released.send('button',button=button)
 
-        if type & 0x01:
-            button = button_map[number]
-            if button:
-                button_states[button] = value
-                if value:
-                    print "%s pressed" % (button)
-                else:
-                    print "%s released" % (button)
-
-        if type & 0x02:
-            axis = axis_map[number]
-            if axis:
-                fvalue = value / 32767.0
-                axis_states[axis] = fvalue
-                print "%s: %.3f" % (axis, fvalue)
+            if type & 0x02:
+                axis = axis_map[number]
+                if axis:
+                    fvalue = value / 32767.0
+                    axis_states[axis] = fvalue
+                    if verbose:
+                        print "%s: %.3f" % (axis, fvalue)
+                    changed.send('axis',axis=axis,value=fvalue)
