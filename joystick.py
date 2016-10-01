@@ -143,21 +143,20 @@ for btn in buf[:num_buttons]:
     btn_name = button_names.get(btn, 'unknown(0x%03x)' % btn)
     button_map.append(btn_name)
     button_states[btn_name] = 0
-
-print '%d axes found: %s' % (num_axes, ', '.join(axis_map))
-print '%d buttons found: %s' % (num_buttons, ', '.join(button_map))
+if verbose:
+    print '%d axes found: %s' % (num_axes, ', '.join(axis_map))
+    print '%d buttons found: %s' % (num_buttons, ', '.join(button_map))
 def start_invader(sender, **kw):
     global running
     global java
     global p
-    if kw['button']=='start':
+    if kw['button']=='start' and button_states['select']==0:
         if running == False:
-            print 'Invader_start'
+            if verbose:
+                print 'Invader_start'
             java=subprocess.Popen('cd /home/pi/Downloads/pixelcontroller-distribution-2.0.0/;\
                             java -jar PixelController.jar',stdout=subprocess.PIPE, shell=True)
-            print 'invader_running'
             p=subprocess.Popen('python /home/pi/Documents/pixel_show/pixelpi.py pixelinvaders --udp-ip 127.0.0.1 --udp-port 6803',stdout=subprocess.PIPE, shell=True,preexec_fn=os.setsid)
-            print 'Done calling'
             running = True
 pressed.connect(start_invader)
 
@@ -170,7 +169,9 @@ def kill(sender, **kw):
             pid = int(a.strip().split(' ',1)[0])
             os.kill(pid,sig.SIGTERM)
             running = False
-            
+        else:
+            subprocess.Popen('python /home/pi/Documents/pixel_show/pixelpi.py all_off --num_leds 100',shell=True)
+            break
 pressed.connect(kill)
     
 # Main event loop
